@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% load static %}
+{% block extra_head %}
+<style>
+    div.card {
+        border:5px;
+        border-style: solid;
+        border-color: black;
+        display: inline-block;
+        padding:0px;
+    }
+    div.card.blue_agent {
+        border-color: blue;
+    }
+    div.card.red_agent {
+        border-color: red;
+    }
+
+    div.card.assasain_agent {
+        border-color: green;
+    }
+    div.card.neutral_agent {
+        border-color: yellow;
+    }
+    div.red_game_state {
+        color: red;
+        display: inline-block;
+    }
+
+    div.blue_game_state {
+        color: blue;
+        display: inline-block;
+    }
+    span.blue_agents_left {
+        color: blue;
+    }
+    span.red_agents_left {
+        color: red;
+    }
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js" integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+
+<script>
+let gameState = null;
+$( document ).ready(function() {
+    $(".card").click(guess);
+    $("#next_game").click(nextGame);
+    $("#end_turn").click(endTurn);
+    setInterval(getState, 5000)
+    getState();
+
+    $("div.card").on("click", function() {
+       $('#imagepreview').attr('src', $(this).find('img').attr('src')); // here asign the image to the modal when the user click the enlarge link
+       $('#imagemodal').modal('show'); // imagemodal is the id attribute assigned to the bootstrap modal, then i use the show function
+       $('#imagemodal').data("agent_index", $(this).data('agent_index'))
+    });
+});
+
+function nextGame() {
+    $.post( "{% url 'next_game' session_name=session_name %}").done(function() {location.reload();});
+}
+function guess() {
+    $.post( "{% url 'make_guess' session_name=session_name %}", {"agent_index": $('#imagemodal').data('agent_index')}).done(getState);
+}
+
+function getState() {
+    $.get( "{% url 'get_game_state' session_name=session_name %}").done(updateState);
+}
+
+function endTurn(){
+    $.post( "{% url 'end_turn' session_name=session_name %}").done(getState);
+}
+
+function updateState(data) {
+    if (gameState === null) {
+        gameState = data;
+    } else if (data.game_id != gameState.game_id) {
+        location.reload();
+    }
+
+    // Check to make sure its changed
+    gameState = data;
+    red_count = 0;
+    blue_count = 0;
+    $.each(gameState["agents"], function(index) {
+        if (this.revealed) {
+            card = $("div.card[data-agent_index='"+index+"']");
+            card.addClass('revealed');
+            card.addClass(this.agent + "_agent")
+        } else {
+            if (this.agent == "red") {
+                red_count+=1;
+            } else if(this.agent == "blue") {
+                blue_count += 1;
+            }
+        }
+    })
+
+    game_stats = "<span class='red_agents_left'>" + red_count + "</span>" + " / " + "<span class='blue_agents_left'>" +
+        blue_count + "</span>";
+    $("#game_stats").html(game_stats)
+
+    if (gameState["turn"]==="red") {
+        game_state = "<div class='red_game_state'>Red's Turn</div>"
+    } else if (gameState["turn"]==="blue") {
+        game_state = "<div class='blue_game_state'>Blue's Turn</div>"
+    } else if (gameState["turn"]==="blue_win") {
+        game_state = "<div class='blue_game_state'>Blue Wins!</div>"
+    } else if (gameState["turn"]==="red_win") {
+        game_state = "<div class='red_game_state'>Red Wins!</div>"
+    }
+    $("#game_state").html(game_state)
+}
+</script>
+{% endblock %}
+{% block body %}
+    <div id="game_stats"></div>
+    <div id="game_state"></div>
+    <input type="button" id="end_turn" value="End Turn"/>
+    <br/><br/>
+
+
+    <div class="container">
+        {% for card in game.get_playfield_cards %}
+            {% if forloop.first %}
+                <div class="row">
+            {% endif %}
+            <div class="col-sm card" data-agent_index="{{forloop.counter0}}">
+                {% with card|stringformat:"i" as card_str %}
+                    {% with "cards/IMG_"|add:card_str|add:".JPG" as card_static_url %}
+                        <img src="{% static card_static_url %}" height="60" width="60" class="img-fluid"></img>
+                    {% endwith %}
+                {% endwith %}
+            </div>
+            {% if forloop.counter|divisibleby:5 %}
+                </div><div class="row">
+            {% endif %}
+        {% endfor %}
+        </div>
+    </div>
+
+    <br/>
+    Player Type:
+        <input type="radio" name="player_type" value="player" checked /> Player
+        <input type="radio" name="player_type" value="spymaster"/> Spymaster
+    <br/>
+    <input type="button" id="next_game" value="Next Game"/>
+
+
+<div class="modal fade" id="imagemodal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+  <div class = "modal-dialog modal-md">
+    <div class="modal-content">
+      <div class="modal-body">
+        <img src="" id="imagepreview">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-dismiss="modal" onclick="javascript:guess()">Select</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
