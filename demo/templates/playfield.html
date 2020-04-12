@@ -3,24 +3,30 @@
 {% block extra_head %}
 <style>
     div.card {
-        border:5px;
-        border-style: solid;
-        border-color: black;
-        display: inline-block;
-        padding:0px;
+        border:0px;
+        border-style: none;
+        display: inline-block
     }
-    div.card.blue_agent {
+    div.card.spymaster-reveal{
+        border:4px;
+        border-style: solid;
+    }
+    div.card.blue_agent.spymaster-reveal {
         border-color: blue;
     }
-    div.card.red_agent {
+    div.card.red_agent.spymaster-reveal {
         border-color: red;
     }
 
-    div.card.assasain_agent {
+    div.card.assasain_agent.spymaster-reveal {
         border-color: green;
     }
-    div.card.neutral_agent {
-        border-color: yellow;
+    div.card.neutral_agent.spymaster-reveal {
+        border:0px;
+        border-style: none;
+    }
+    div.card.revealed img {
+        display: none;
     }
     div.red_game_state {
         color: red;
@@ -37,20 +43,28 @@
     span.red_agents_left {
         color: red;
     }
+
+    #game_stats {
+        display: inline-block;
+    }
+    #game_state {
+        font-size: 1.5em;
+    }
 </style>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js" integrity="sha384-aJ21OjlMXNL5UyIl/XNwTMqvzeRMZH2w8c5cRVpzpU8Y5bApTppSuUkhZXN0VxHd" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css" integrity="sha384-HSMxcRTRxnN+Bdg0JdbxYKrThecOKuH5zCYotlSAcp1+c8xmyTe9GYg1l9a69psu" crossorigin="anonymous">
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
 
 <script>
 let gameState = null;
+let isSpymaster = false;
 $( document ).ready(function() {
     $(".card").click(guess);
     $("#next_game").click(nextGame);
     $("#end_turn").click(endTurn);
     setInterval(getState, 5000)
     getState();
-
+    $("#make_spymaster_link").click(makeSpymaster)
     $("div.card").on("click", function() {
        $('#imagepreview').attr('src', $(this).find('img').attr('src')); // here asign the image to the modal when the user click the enlarge link
        $('#imagemodal').modal('show'); // imagemodal is the id attribute assigned to the bootstrap modal, then i use the show function
@@ -58,6 +72,17 @@ $( document ).ready(function() {
     });
 });
 
+function makeSpymaster() {
+    isSpymaster = true;
+    $("#player_type").html("Spymaster");
+    $("#make_spymaster_link").remove();
+    $("#select_agent").attr("disabled", true);
+    $.each(gameState["agents"], function(index) {
+        card = $("div.card[data-agent_index='"+index+"']");
+        card.addClass(this.agent + "_agent")
+        card.addClass("spymaster-reveal")
+    })
+}
 function nextGame() {
     $.post( "{% url 'next_game' session_name=session_name %}").done(function() {location.reload();});
 }
@@ -116,37 +141,42 @@ function updateState(data) {
 </script>
 {% endblock %}
 {% block body %}
-    <div id="game_stats"></div>
-    <div id="game_state"></div>
-    <input type="button" id="end_turn" value="End Turn"/>
-    <br/><br/>
-
-
-    <div class="container">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-3 my-auto">Stats: <div id="game_stats"></div></div>
+            <div class="col-4 offset-1 my-auto"><div id="game_state"></div></div>
+            <div class="col-3 offset-1 my-auto"><input type="button" id="end_turn" value="End Turn"/></div>
+        </div>
+    </div>
+    <br/>
+    <div class="container-fluid">
         {% for card in game.get_playfield_cards %}
             {% if forloop.first %}
-                <div class="row">
+                <div class="row mb-2">
             {% endif %}
-            <div class="col-sm card" data-agent_index="{{forloop.counter0}}">
+            <div class="col-2 card px-1" data-agent_index="{{forloop.counter0}}">
                 {% with card|stringformat:"i" as card_str %}
-                    {% with "cards/IMG_"|add:card_str|add:".JPG" as card_static_url %}
-                        <img src="{% static card_static_url %}" height="60" width="60" class="img-fluid"></img>
+                    {% with "demo/cards/IMG_"|add:card_str|add:".JPG" as card_static_url %}
+                        <img src="{% static card_static_url %}" class="img-fluid" width="100%" height="auto"></img>
                     {% endwith %}
                 {% endwith %}
             </div>
             {% if forloop.counter|divisibleby:5 %}
-                </div><div class="row">
+                </div><div class="row mb-2">
             {% endif %}
         {% endfor %}
         </div>
     </div>
 
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-3 my-auto">Role: <span id="player_type">Player</span></div>
+            <div class="col-3 offset-6 my-auto"><input type="button" id="next_game" value="Next Game"/></div>
+        </div>
+    </div>
+
+    <a id="make_spymaster_link" href="#">Make me a spy master</a>
     <br/>
-    Player Type:
-        <input type="radio" name="player_type" value="player" checked /> Player
-        <input type="radio" name="player_type" value="spymaster"/> Spymaster
-    <br/>
-    <input type="button" id="next_game" value="Next Game"/>
 
 
 <div class="modal fade" id="imagemodal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
@@ -156,7 +186,7 @@ function updateState(data) {
         <img src="" id="imagepreview">
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-primary" data-dismiss="modal" onclick="javascript:guess()">Select</button>
+        <button type="button" class="btn btn-primary" data-dismiss="modal" id="select_agent" onclick="javascript:guess()">Select</button>
       </div>
     </div>
   </div>

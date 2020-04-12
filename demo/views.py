@@ -27,10 +27,13 @@ def next_game(request, session_name):
     return JsonResponse({"success": True})
 
 def get_playfield(request, session_name):
+    print (session_name)
     session = Session.objects.get(session_name=session_name)
+    print (session)
     if not session.current_game:
         create_new_game(session=session)
     context = {"game": session.current_game, "session_name": session_name}
+    print ("render")
     return render(request=request, template_name="playfield.html", context=context)
 
 @require_POST
