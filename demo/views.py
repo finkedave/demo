@@ -17,8 +17,11 @@ from django.views import View
 
 @require_GET
 def get_game_state(request, session_name):
-    game = Session.objects.get(session_name=session_name).current_game
-    return JsonResponse(json.loads(game.state))
+    try:
+        game = Session.objects.get(session_name=session_name).current_game
+        return JsonResponse(json.loads(game.state))
+    except Session.DoesNotExist:
+        return JsonResponse({"end_session": True})
 
 @require_POST
 def next_game(request, session_name):
@@ -26,14 +29,24 @@ def next_game(request, session_name):
     create_new_game(session=session)
     return JsonResponse({"success": True})
 
+@require_POST
+def end_session(request, session_name):
+    try:
+        Session.objects.get(session_name=session_name).delete()
+    except Session.DoesNotExist:
+        pass
+    return JsonResponse({"end_session": True})
+
 def get_playfield(request, session_name):
-    print (session_name)
-    session = Session.objects.get(session_name=session_name)
-    print (session)
+    session_qs = Session.objects.filter(session_name=session_name)
+    if not session_qs:
+        session = Session.objects.create(session_name=session_name, used_playfield_cards="[]")
+    else:
+        session = session_qs[0]
+
     if not session.current_game:
         create_new_game(session=session)
     context = {"game": session.current_game, "session_name": session_name}
-    print ("render")
     return render(request=request, template_name="playfield.html", context=context)
 
 @require_POST
@@ -55,6 +68,9 @@ def make_guess(request, session_name):
         turn = state["turn"]
         if turn != guessed_agent["agent"]:
             state = _end_turn(state)
+    else:
+        state["game_over"] = True;
+
     game.state = json.dumps(state)
     game.save()
     return JsonResponse({"success": True})
@@ -69,7 +85,6 @@ def is_game_over_check(state):
         elif agent_color=="blue" and not agent["revealed"]:
             blue_hidden = True
         elif agent_color=="assassin" and agent["revealed"]:
-            print ("assassin is turned")
             opposing_team = "red" if state["turn"] == "blue" else "blue"
             state["turn"] = opposing_team + "_win"
             return True, state
@@ -103,17 +118,19 @@ class CreateJoinSession(View):
         session_name = request.POST.get("session_name", None)
         session = Session.objects.filter(session_name=session_name)
         if not session:
-            session = Session.objects.create(session_name=session_name)
+            session = Session.objects.create(session_name=session_name, used_playfield_cards="[]")
             create_new_game(session)
         return redirect('get_playfield', session_name=session_name)
 
 
 def create_new_game(session):
-    all_cards = set([index for index in range(2733, 2877)])
-
-    used_cards = set(session.used_playfield_cards)
-
+    all_cards = set([index for index in range(1, 241)])
+    used_cards = set(json.loads(session.used_playfield_cards))
     available_cards = all_cards.difference(used_cards)
+    if len(available_cards) < 20:
+        available_cards = all_cards
+        used_cards = set()
+
     playfield_cards = sample(available_cards, 20)
     agents = []
     agent_indexes = [index for index in range(0, 20)]
@@ -140,13 +157,13 @@ def create_new_game(session):
                 agent = turn = "red"
         agents.append({"revealed": False, "agent": agent})
     shuffle(agents)
-    state = {"agents": agents, "turn": turn}
+    state = {"agents": agents, "turn": turn, "game_over": False}
     game = Game.objects.create(state=json.dumps(state), playfield_cards=json.dumps(playfield_cards))
     state = json.loads(game.state)
     state["game_id"] = game.id
     game.state = json.dumps(state)
     game.save()
     used_cards.update(playfield_cards)
-    session.used_playfield_cards = used_cards
+    session.used_playfield_cards = json.dumps(list(used_cards))
     session.current_game = game
     session.save()
