@@ -14,6 +14,7 @@ from random import seed
 from random import random
 from random import shuffle, sample, randint
 from django.views import View
+from django.shortcuts import get_object_or_404
 
 @require_GET
 def get_game_state(request, session_name):
@@ -46,14 +47,23 @@ def get_playfield(request, session_name):
 
     if not session.current_game:
         create_new_game(session=session)
-    context = {"game": session.current_game, "session_name": session_name}
+    context = {"game": session.current_game, "session_name": session_name, "settings": json.loads(session.settings)}
     return render(request=request, template_name="playfield.html", context=context)
+
+@require_POST
+def update_settings(request, session_name):
+    session = get_object_or_404(Session, session_name=session_name)
+    new_settings = json.loads(request.POST['settings'])
+    session.settings = json.dumps(new_settings)
+    session.save()
+    return next_game(request, session_name)
 
 @require_POST
 def make_guess(request, session_name):
     session = Session.objects.get(session_name=session_name)
     guess = request.POST.get("agent_index")
     game = session.current_game
+    settings = json.loads(session.settings)
     state = json.loads(game.state)
 
     if state["turn"].endswith("_win"):
@@ -62,11 +72,10 @@ def make_guess(request, session_name):
     guessed_agent = state["agents"][int(guess)]
     guessed_agent["revealed"] = True
 
-    game_is_over, state = is_game_over_check(state)
-
+    game_is_over, state = is_game_over_check(state, guessed_agent, settings)
     if not game_is_over:
         turn = state["turn"]
-        if turn != guessed_agent["agent"]:
+        if not state["sudden_death"] and turn != guessed_agent["agent"]:
             state = _end_turn(state)
     else:
         state["game_over"] = True;
@@ -75,7 +84,7 @@ def make_guess(request, session_name):
     game.save()
     return JsonResponse({"success": True})
 
-def is_game_over_check(state):
+def is_game_over_check(state, guessed_agent, settings):
     red_hidden = False
     blue_hidden = False
     for agent in state["agents"]:
@@ -84,17 +93,34 @@ def is_game_over_check(state):
             red_hidden = True
         elif agent_color=="blue" and not agent["revealed"]:
             blue_hidden = True
-        elif agent_color=="assassin" and agent["revealed"]:
-            opposing_team = "red" if state["turn"] == "blue" else "blue"
-            state["turn"] = opposing_team + "_win"
-            return True, state
-    if red_hidden and blue_hidden:
+        elif agent_color=="assassin" and agent["revealed"] and not state["sudden_death"]:
+            if settings["assassins_ending"]:
+                state["sudden_death"] = True
+                return False, state
+            else:
+                opposing_team = "red" if state["turn"] == "blue" else "blue"
+                state["turn"] = opposing_team + "_win"
+                return True, state
+
+    turn = state["turn"]
+    if state["sudden_death"] and turn != guessed_agent["agent"]:
+        if turn == "red":
+            state["turn"] = "blue_win"
+        else:
+            state["turn"] = "red_win"
+        return True, state
+
+    if (red_hidden and blue_hidden) or (settings["assassins_ending"] and not state["sudden_death"]):
         return False, state
-    if not red_hidden:
+
+    if not red_hidden and turn=="red":
         state["turn"] = "red_win"
-    else:
+        return True, state
+    elif not blue_hidden and turn=="blue":
         state["turn"] = "blue_win"
-    return True, state
+        return True, state
+    return False, state
+
 
 @require_POST
 def end_turn(request, session_name):
@@ -157,7 +183,7 @@ def create_new_game(session):
                 agent = turn = "red"
         agents.append({"revealed": False, "agent": agent})
     shuffle(agents)
-    state = {"agents": agents, "turn": turn, "game_over": False}
+    state = {"agents": agents, "turn": turn, "game_over": False, "sudden_death": False}
     game = Game.objects.create(state=json.dumps(state), playfield_cards=json.dumps(playfield_cards))
     state = json.loads(game.state)
     state["game_id"] = game.id

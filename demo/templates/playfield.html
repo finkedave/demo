@@ -73,6 +73,79 @@ div.container-fluid button {
     background: #eee;
     cursor: pointer;
 }
+#settings-toggle {
+    border: none;
+    padding: 0;
+    background-color: transparent;
+    margin: 2px 8px 0;
+}
+
+/* The switch - the box around the slider */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 60px;
+  height: 34px;
+}
+
+/* Hide default HTML checkbox */
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+/* The slider */
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 26px;
+  width: 26px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(26px);
+  -ms-transform: translateX(26px);
+  transform: translateX(26px);
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+
+
+
 </style>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
@@ -106,6 +179,9 @@ $( document ).ready(function() {
        $('#imagemodal').modal('show'); // imagemodal is the id attribute assigned to the bootstrap modal, then i use the show function
        $('#imagemodal').data("agent_index", $(this).data('agent_index'))
     });
+    $("#settings-toggle").on("click", function() {
+        $('#settingsmodal').modal('show');
+    });
 });
 
 function makeSpymaster() {
@@ -124,6 +200,18 @@ function nextGame() {
 }
 function guess() {
     $.post( "{% url 'make_guess' session_name=session_name %}", {"agent_index": $('#imagemodal').data('agent_index')}).done(getState);
+}
+
+function applySettings() {
+    let newSettings = {
+        "assassins_ending": false
+    };
+    $.each($("#settings").serializeArray(), function(){
+        newSettings[this["name"]] = true;
+    })
+    $.post( "{% url 'update_settings' session_name=session_name %}", {
+        'settings': JSON.stringify(newSettings),
+    }).done(getState);
 }
 
 function endSession() {
@@ -184,7 +272,12 @@ function updateState(data) {
     } else if (gameState["turn"]==="red_win") {
         game_state = "<div class='red_game_state'>Red Wins!</div>"
     }
-    $("#game_state").html(game_state);
+    let suddenDeathText = "";
+    if (gameState["sudden_death"]) {
+        $("#end_turn").attr('disabled', true)
+        suddenDeathText = "<div>!! Sudden Death !!</div>"
+    }
+    $("#game_state").html(game_state+ suddenDeathText);
 
     if (gameState["game_over"]) {
         $("#end_turn").attr("disabled", true);
@@ -196,7 +289,9 @@ function updateState(data) {
 {% block body %}
     <div class="container-fluid">
         <div class="row">
-            <div class="col-3 my-auto">Stats: <div id="game_stats"></div></div>
+            <div class="col-3 my-auto">Stats: <div id="game_stats"></div>
+                {% if settings.assassins_ending %}<br/>Assassins Ending {% endif %}
+            </div>
             <div class="col-4 offset-1 my-auto"><div id="game_state"></div></div>
             <div class="col-3 offset-1 my-auto"><button id="end_turn">End Turn</button></div>
         </div>
@@ -227,6 +322,9 @@ function updateState(data) {
         <div class="row">
             <div class="col-3 my-auto">Role: <span id="player_type">Player</span></div>
             <div class="col-3 offset-5 my-auto">
+                <button id="settings-toggle">
+                    <svg width="30" height="30" viewBox="0 0 35 35" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22.3344 4.86447L24.31 8.23766C21.9171 9.80387 21.1402 12.9586 22.5981 15.4479C23.038 16.1989 23.6332 16.8067 24.3204 17.2543L22.2714 20.7527C20.6682 19.9354 18.6888 19.9151 17.0088 20.8712C15.3443 21.8185 14.3731 23.4973 14.2734 25.2596H10.3693C10.3241 24.4368 10.087 23.612 9.64099 22.8504C8.16283 20.3266 4.93593 19.4239 2.34593 20.7661L0.342913 17.3461C2.85907 15.8175 3.70246 12.5796 2.21287 10.0362C1.74415 9.23595 1.09909 8.59835 0.354399 8.14386L2.34677 4.74208C3.95677 5.5788 5.95446 5.60726 7.64791 4.64346C9.31398 3.69524 10.2854 2.0141 10.3836 0.25H14.267C14.2917 1.11932 14.5297 1.99505 15.0012 2.80013C16.4866 5.33635 19.738 6.23549 22.3344 4.86447ZM15.0038 17.3703C17.6265 15.8776 18.5279 12.5685 17.0114 9.97937C15.4963 7.39236 12.1437 6.50866 9.52304 8.00013C6.90036 9.4928 5.99896 12.8019 7.5154 15.391C9.03058 17.978 12.3832 18.8617 15.0038 17.3703Z" transform="translate(12.7548) rotate(30)" fill="#EEE" stroke="#BBB" stroke-width="0.5"></path></svg>
+                </button>
                 <button id="end_session">End Game Session</button>
                 <button id="next_game">Next Game</button>
             </div>
@@ -249,4 +347,28 @@ function updateState(data) {
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="settingsmodal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+  <div class = "modal-dialog modal-md">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h4 class="modal-title" id="archive_modal_label">Settings</h4>
+          </div>
+          <div class="modal-body">
+              <form id="settings">
+                  <label class="switch">
+                      <input type="checkbox" name="assassins_ending" {% if settings.assassins_ending %}checked{% endif %}>
+                      <span class="slider round"></span>
+                  </label>
+                  Assassins Ending
+              </form>
+          </div>
+          <div class="modal-footer">
+              <button class="btn btn-default" data-dismiss="modal" >Cancel</button>
+              <button class="btn btn-primary" data-dismiss="modal" onclick="javascript:applySettings()">Apply</button>
+          </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
